@@ -20,6 +20,7 @@
  *--------------------------------------------------------------------------------------------*/
 // Based on: https://github.com/Microsoft/THEIA/blob/dd3e2d94f81139f9d18ba15a24c16c6061880b93/extensions/git/src/askpass.ts
 
+import { injectable, postConstruct } from 'inversify';
 import * as path from 'path';
 import * as http from 'http';
 import * as os from 'os';
@@ -36,14 +37,16 @@ export interface AskpassEnvironment {
     readonly THEIA_GIT_ASKPASS_HANDLE?: string;
 }
 
+@injectable()
 export class Askpass implements Disposable {
 
-    private server: http.Server;
-    private ipcHandlePathPromise: Promise<string>;
-    private ipcHandlePath: string | undefined;
-    private enabled = true;
+    protected server: http.Server;
+    protected ipcHandlePathPromise: Promise<string>;
+    protected ipcHandlePath: string | undefined;
+    protected enabled = true;
 
-    constructor() {
+    @postConstruct()
+    protected init(): void {
         this.server = http.createServer((req, res) => this.onRequest(req, res));
         this.ipcHandlePathPromise = this.setup().catch(err => {
             console.error(err);
@@ -99,14 +102,21 @@ export class Askpass implements Disposable {
     }
 
     protected async prompt(host: string, request: string): Promise<string> {
-        const options: InputBoxOptions = {
-            password: /password/i.test(request),
-            placeHolder: request,
-            prompt: `Git: ${host}`,
-            ignoreFocusOut: true
-        };
+        // const options: InputBoxOptions = {
+        //     password: /password/i.test(request),
+        //     placeHolder: request,
+        //     prompt: `Git: ${host}`,
+        //     ignoreFocusOut: true
+        // };
+        if (/password/i.test(request)) {
+        }
 
-        return await window.showInputBox(options) || '';
+        if (/username/i.test(request)) {
+        }
+
+        // return await window.showInputBox(options) || '';
+        console.log('host', host, 'request', request);
+        return '';
     }
 
     protected async randomBytes(size: number): Promise<Buffer> {
@@ -130,7 +140,7 @@ export class Askpass implements Disposable {
 
         return {
             ELECTRON_RUN_AS_NODE: '1',
-            GIT_ASKPASS: path.join(__dirname, 'askpass.sh'),
+            GIT_ASKPASS: path.join(__dirname, '..', '..', '..', 'src', 'electron-node', 'askpass', 'askpass.sh'),
             THEIA_GIT_ASKPASS_NODE: process.execPath,
             THEIA_GIT_ASKPASS_MAIN: path.join(__dirname, 'askpass-main.js'),
             THEIA_GIT_ASKPASS_HANDLE: await this.ipcHandlePathPromise

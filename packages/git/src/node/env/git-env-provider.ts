@@ -14,8 +14,8 @@
  * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
  ********************************************************************************/
 
-import { injectable } from 'inversify';
-import { Disposable } from '@theia/core/lib/common/disposable';
+import { injectable, postConstruct } from 'inversify';
+import { Disposable, DisposableCollection } from '@theia/core/lib/common/disposable';
 
 /**
  * Provides an additional environment object when executing every single Git command.
@@ -36,12 +36,21 @@ export interface GitEnvProvider extends Disposable {
 @injectable()
 export class DefaultGitEnvProvider implements Disposable {
 
+    protected toDispose = new DisposableCollection();
+
+    @postConstruct()
+    protected init(): void {
+        // NOOP
+    }
+
     async getEnv(): Promise<Object> {
         return {};
     }
 
     dispose(): void {
-        // NOOP
+        if (!this.toDispose.disposed) {
+            this.toDispose.dispose();
+        }
     }
 
 }
