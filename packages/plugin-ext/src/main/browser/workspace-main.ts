@@ -24,8 +24,13 @@ import { UriComponents } from '../../common/uri-components';
 import { Path } from '@theia/core/lib/common/path';
 import { QuickOpenModel, QuickOpenItem, QuickOpenMode } from '@theia/core/lib/browser/quick-open/quick-open-model';
 import { MonacoQuickOpenService } from '@theia/monaco/lib/browser/monaco-quick-open-service';
+import { MonacoTextModelService } from '@theia/monaco/lib/browser/monaco-text-model-service';
 import { FileStat } from '@theia/filesystem/lib/common';
 import { FileSearchService } from '@theia/file-search/lib/common/file-search-service';
+import URI from '@theia/core/lib/common/uri';
+import { Resource } from '@theia/core/lib/common/resource';
+import { Disposable } from 'vscode-jsonrpc';
+import { Emitter, Event } from '@theia/core';
 
 export class WorkspaceMainImpl implements WorkspaceMain {
 
@@ -33,13 +38,18 @@ export class WorkspaceMainImpl implements WorkspaceMain {
 
     private quickOpenService: MonacoQuickOpenService;
 
+    private textModelService: MonacoTextModelService;
+
     private fileSearchService: FileSearchService;
 
     private roots: FileStat[];
 
+    private providedResources = new Map<string, TextContentResource>();
+
     constructor(rpc: RPCProtocol, container: interfaces.Container) {
         this.proxy = rpc.getProxy(MAIN_RPC_CONTEXT.WORKSPACE_EXT);
         this.quickOpenService = container.get(MonacoQuickOpenService);
+        this.textModelService = container.get(MonacoTextModelService);
         const workspaceService = container.get(WorkspaceService);
         this.fileSearchService = container.get(FileSearchService);
 
@@ -131,15 +141,15 @@ export class WorkspaceMainImpl implements WorkspaceMain {
     }
 
     $startFileSearch(includePattern: string, excludePatternOrDisregardExcludes?: string | false,
-                     maxResults?: number, token?: theia.CancellationToken): Promise<UriComponents[]> {
+        maxResults?: number, token?: theia.CancellationToken): Promise<UriComponents[]> {
         const uris: UriComponents[] = new Array();
         let j = 0;
         const promises: Promise<any>[] = new Array();
         for (const root of this.roots) {
-            promises[j++] = this.fileSearchService.find(includePattern, {rootUri: root.uri}).then(value => {
+            promises[j++] = this.fileSearchService.find(includePattern, { rootUri: root.uri }).then(value => {
                 const paths: string[] = new Array();
                 let i = 0;
-                value.forEach( item => {
+                value.forEach(item => {
                     let path: string;
                     path = root.uri.endsWith('/') ? root.uri + item : root.uri + '/' + item;
                     paths[i++] = path;
@@ -153,6 +163,77 @@ export class WorkspaceMainImpl implements WorkspaceMain {
                 uris[i++] = Uri.parse(path);
             });
             return Promise.resolve(uris);
-            });
+        });
     }
+
+    async $registerTextDocumentContentProvider(scheme: string): Promise<void> {
+        const instance = this;
+
+        this.textModelService.registerTextContentResourceProvider(scheme, {
+            provideResource: (uri: URI): Resource => {
+                let resource = instance.providedResources.get(uri.toString());
+                if (resource) {
+                    return resource;
+                }
+
+                resource = new TextContentResource(uri, this.proxy, {
+                    dispose() {
+                        instance.providedResources.delete(uri.toString());
+                    }
+                });
+
+                instance.providedResources.set(uri.toString(), resource);
+                return resource;
+            }
+        });
+    }
+
+    $unregisterTextDocumentContentProvider(scheme: string): void {
+        this.textModelService.unregisterTextContentResourceProvider(scheme);
+    }
+
+    $onTextDocumentContentChange(uri: string, content: string): void {
+        const resource = this.providedResources.get(uri);
+        if (resource) {
+            resource.setContent(content);
+        }
+    }
+
+}
+
+export class TextContentResource implements Resource {
+
+    private onDidChangeContentsEmmiter: Emitter<void> = new Emitter<void>();
+    readonly onDidChangeContents: Event<void> = this.onDidChangeContentsEmmiter.event;
+
+    // cached content
+    cache: string | undefined;
+
+    constructor(public uri: URI, private proxy: WorkspaceExt, protected disposable: Disposable) {
+    }
+
+    async readContents(options?: { encoding?: string }): Promise<string> {
+        if (this.cache) {
+            const content = this.cache;
+            this.cache = undefined;
+            return content;
+        } else {
+            const content = await this.proxy.$provideTextDocumentContent(this.uri.toString());
+            if (content) {
+                return content;
+            }
+        }
+
+        return Promise.reject(`Unable to get content for '${this.uri.toString()}'`);
+    }
+
+    dispose() {
+        this.disposable.dispose();
+    }
+
+    setContent(content: string) {
+        this.cache = content;
+        this.onDidChangeContentsEmmiter.fire(undefined);
+    }
+
 }

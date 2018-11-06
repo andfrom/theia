@@ -17,9 +17,21 @@
 import { inject, injectable } from 'inversify';
 import { MonacoToProtocolConverter, ProtocolToMonacoConverter } from 'monaco-languageclient';
 import URI from '@theia/core/lib/common/uri';
-import { ResourceProvider, ReferenceCollection, Event } from '@theia/core';
+import { Resource, ResourceProvider, ReferenceCollection, Event } from '@theia/core';
 import { EditorPreferences, EditorPreferenceChange } from '@theia/editor/lib/browser';
 import { MonacoEditorModel } from './monaco-editor-model';
+
+/**
+ * Text content provider for resources with custom scheme.
+ */
+export interface TextContentResourceProvider {
+
+    /**
+     * Provides resource for given URI
+     */
+    provideResource(uri: URI): Resource;
+
+}
 
 @injectable()
 export class MonacoTextModelService implements monaco.editor.ITextModelService {
@@ -27,6 +39,9 @@ export class MonacoTextModelService implements monaco.editor.ITextModelService {
     protected readonly _models = new ReferenceCollection<string, MonacoEditorModel>(
         uri => this.loadModel(new URI(uri))
     );
+
+    // Registered resource providers for different schemes
+    protected textContentResourceProviders = new Map<string, TextContentResourceProvider>();
 
     @inject(ResourceProvider)
     protected readonly resourceProvider: ResourceProvider;
@@ -58,7 +73,16 @@ export class MonacoTextModelService implements monaco.editor.ITextModelService {
 
     protected async loadModel(uri: URI): Promise<MonacoEditorModel> {
         await this.editorPreferences.ready;
-        const resource = await this.resourceProvider(uri);
+
+        let resource;
+        // Check whether additional resource provider is registered for a scheme.
+        if (this.textContentResourceProviders.has(uri.scheme)) {
+            // Ask resource provider for a resource
+            resource = await this.getProvidedTextResource(uri);
+        } else {
+            resource = await this.resourceProvider(uri);
+        }
+
         const model = await (new MonacoEditorModel(resource, this.m2p, this.p2m).load());
         model.autoSave = this.editorPreferences['editor.autoSave'];
         model.autoSaveDelay = this.editorPreferences['editor.autoSaveDelay'];
@@ -105,4 +129,37 @@ export class MonacoTextModelService implements monaco.editor.ITextModelService {
             }
         };
     }
+
+    /**
+     * Registers resource provider for a scheme.
+     */
+    registerTextContentResourceProvider(scheme: string, provider: TextContentResourceProvider) {
+        if (this.textContentResourceProviders.has(scheme)) {
+            throw new Error(`Text Content Resource Provider for scheme '${scheme}' is already registered`);
+        }
+
+        this.textContentResourceProviders.set(scheme, provider);
+    }
+
+    /**
+     * Unregisters resource provider for a scheme.
+     */
+    unregisterTextContentResourceProvider(scheme: string) {
+        if (!this.textContentResourceProviders.delete(scheme)) {
+            throw new Error(`Text Content Resource Provider for scheme '${scheme}' has not been registered`);
+        }
+    }
+
+    /**
+     * Asks for resource provider for a resource with given URI.
+     */
+    getProvidedTextResource(uri: URI): Resource {
+        const provider = this.textContentResourceProviders.get(uri.scheme);
+        if (!provider) {
+            throw new Error(`Unable to find Text Content Resource Provider for scheme '${uri.scheme}'`);
+        }
+
+        return provider.provideResource(uri);
+    }
+
 }
