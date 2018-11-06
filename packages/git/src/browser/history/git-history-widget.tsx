@@ -152,7 +152,7 @@ export class GitHistoryWidget extends GitNavigableListWidget<GitHistoryListNode>
                         const avatarUrl = await this.avatarService.getAvatar(commit.author.email);
                         commits.push({
                             authorName: commit.author.name,
-                            authorDate: new Date(commit.author.timestamp),
+                            authorDate: new Date(commit.author.timestamp * 1000),
                             authorEmail: commit.author.email,
                             authorDateRelative: commit.authorDateRelative,
                             authorAvatar: avatarUrl,
