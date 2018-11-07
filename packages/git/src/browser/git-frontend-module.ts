@@ -35,6 +35,7 @@ import { GitRepositoryTracker } from './git-repository-tracker';
 import { GitCommitMessageValidator } from './git-commit-message-validator';
 import { GitSyncService } from './git-sync-service';
 import { GitErrorHandler } from './git-error-handler';
+import { GitPrompt, GitPromptServer, GitPromptServerProxy, ReconnectingGitPromptServer } from '../common/git-prompt';
 
 import '../../src/browser/style/index.css';
 
@@ -72,4 +73,8 @@ export default new ContainerModule(bind => {
 
     bind(GitSyncService).toSelf().inSingletonScope();
     bind(GitErrorHandler).toSelf().inSingletonScope();
+
+    bind(GitPrompt).toSelf();
+    bind(GitPromptServerProxy).toDynamicValue(context => WebSocketConnectionProvider.createProxy(context.container, GitPrompt.WS_PATH)).inSingletonScope();
+    bind(GitPromptServer).to(ReconnectingGitPromptServer).inSingletonScope();
 });

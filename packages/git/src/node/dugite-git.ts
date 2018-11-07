@@ -45,6 +45,7 @@ import { GitRepositoryManager } from './git-repository-manager';
 import { GitLocator } from './git-locator/git-locator-protocol';
 import { GitExecProvider } from './git-exec-provider';
 import { GitEnvProvider } from './env/git-env-provider';
+import { DugiteGitPromptServer } from './dugite-git-prompt';
 
 /**
  * Parsing and converting raw Git output into Git model instances.
@@ -318,6 +319,9 @@ export class DugiteGit implements Git {
     @inject(GitEnvProvider)
     protected readonly envProvider: GitEnvProvider;
 
+    @inject(DugiteGitPromptServer)
+    protected readonly promptServer: DugiteGitPromptServer;
+
     protected gitEnv: Deferred<Object> = new Deferred();
 
     @postConstruct()
@@ -363,6 +367,7 @@ export class DugiteGit implements Git {
     }
 
     async status(repository: Repository): Promise<WorkingDirectoryStatus> {
+        this.promptServer.ask('does this work?');
         const repositoryPath = this.getFsPath(repository);
         const [exec, env] = await Promise.all([this.execProvider.exec(), this.gitEnv.promise]);
         const dugiteStatus = await getStatus(repositoryPath, true, this.limit, { exec, env });

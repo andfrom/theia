@@ -37,6 +37,8 @@ export interface AskpassEnvironment {
     readonly THEIA_GIT_ASKPASS_HANDLE?: string;
 }
 
+// TODO !!! no console.error/log !!!
+
 @injectable()
 export class Askpass implements Disposable {
 
